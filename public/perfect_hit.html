@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Perfect Hit – World Mode</title>
+<style>
+body {
+  background:#0b0b0b;
+  color:#fff;
+  font-family:Arial, sans-serif;
+  text-align:center;
+  margin:0;
+  padding:0;
+}
+h1 { margin-top:30px; font-weight:normal; }
+#track { width:80%; height:22px; background:#333; margin:30px auto; position:relative; }
+#zone { position:absolute; left:45%; width:10%; height:100%; background:#00ffcc; }
+#bar { position:absolute; width:28px; height:100%; background:#ffcc00; }
+button { padding:10px 20px; font-size:16px; cursor:pointer; }
+button:disabled { opacity:0.4; cursor:not-allowed; }
+#score,#time,#result { margin-top:10px; font-size:18px; }
+#leaderboard { margin-top:30px; }
+</style>
+</head>
+<body>
+
+<h1>Perfect Hit 🌍</h1>
+
+<div id="track">
+  <div id="zone"></div>
+  <div id="bar"></div>
+</div>
+
+<button id="hitBtn">HIT</button>
+
+<div id="score">Score: 0</div>
+<div id="time">Time: 60</div>
+<div id="result"></div>
+
+<div id="leaderboard">
+  <h3>World Top 10</h3>
+  <ol id="list"></ol>
+</div>
+
+<script>
+/* ============ CONFIG ============ */
+const GAME_TIME = 60;            // 单局 1 分钟
+const COOLDOWN_TIME = 1500;       // 25 分钟
+const STORAGE_KEY = "perfectHitUnlock";
+const SERVER = "<https://perfect-hit-server.onrender.com>"; // 
+
+/* ============ ELEMENTS ============ */
+const bar = document.getElementById("bar");
+const hitBtn = document.getElementById("hitBtn");
+const scoreText = document.getElementById("score");
+const timeText = document.getElementById("time");
+const resultText = document.getElementById("result");
+const list = document.getElementById("list");
+
+/* ============ STATE ============ */
+let pos = 0, dir = 1, speed = 7;
+let score = 0;
+let timeLeft = GAME_TIME;
+let playing = true;
+
+/* ============ CHECK COOLDOWN ============ */
+const savedUnlock = localStorage.getItem(STORAGE_KEY);
+if(savedUnlock && Date.now() < savedUnlock){
+  playing = false;
+  hitBtn.disabled = true;
+  startCooldown(Number(savedUnlock));
+} else {
+  startGame();
+}
+
+/* ============ GAME LOOP ============ */
+function startGame(){
+  const move = setInterval(()=>{
+    if(!playing) return;
+    pos += speed * dir;
+    if(pos > 100 || pos < 0) dir *= -1;
+    bar.style.left = pos + "%";
+  },30);
+
+  const timer = setInterval(()=>{
+    if(!playing) { clearInterval(timer); return; }
+    timeLeft--;
+    timeText.textContent = `Time: ${timeLeft}`;
+    if(timeLeft <= 0){
+      endGame(move, timer);
+    }
+  },1000);
+}
+
+/* ============ HIT LOGIC ============ */
+hitBtn.onclick = ()=>{
+  if(!playing) return;
+  if(pos >= 45 && pos <= 55){
+    score += 100;
+    flash("PERFECT","#00ffcc");
+  } else if(pos >= 40 && pos <= 60){
+    score += 50;
+    flash("GOOD","#ffaa00");
+  } else {
+    score -= 20;
+    flash("MISS","#ff4444");
+  }
+  scoreText.textContent = `Score: ${score}`;
+};
+
+function flash(text,color){
+  resultText.textContent = text;
+  resultText.style.color = color;
+  setTimeout(()=>resultText.textContent="",300);
+}
+
+/* ============ END GAME ============ */
+function endGame(moveInt, timerInt){
+  playing = false;
+  hitBtn.disabled = true;
+  clearInterval(moveInt);
+  clearInterval(timerInt);
+
+  resultText.textContent = "Submitting score...";
+  const unlockAt = Date.now() + COOLDOWN_TIME*1000;
+  localStorage.setItem(STORAGE_KEY, unlockAt);
+
+  submitScore(score, unlockAt);
+}
+
+/* ============ NETWORK ============ */
+async function submitScore(score, unlockAt){
+  try{
+    await fetch(`${SERVER}/submit`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({score})
+    });
+  }catch(e){
+    console.error("Submit failed:",e);
+  }
+  startCooldown(unlockAt);
+  loadLeaderboard();
+}
+
+async function loadLeaderboard(){
+  try{
+    const res = await fetch(`${SERVER}/leaderboard`);
+    const data = await res.json();
+    list.innerHTML="";
+    data.forEach(item=>{
+      const li = document.createElement("li");
+      li.textContent = item.score;
+      list.appendChild(li);
+    });
+  }catch(e){
+    console.error("Load leaderboard failed:",e);
+  }
+}
+
+/* ============ COOLDOWN ============ */
+function startCooldown(unlockAt){
+  updateCooldown(unlockAt);
+  const cd = setInterval(()=>{
+    updateCooldown(unlockAt);
+    if(Date.now() >= unlockAt){
+      clearInterval(cd);
+      resultText.textContent="Session complete. You may return now.";
+    }
+  },1000);
+}
+
+function updateCooldown(unlockAt){
+  const remaining = Math.max(0, Math.floor((unlockAt-Date.now())/1000));
+  const m = Math.floor(remaining/60);
+  const s = String(remaining%60).padStart(2,"0");
+  resultText.textContent=`You can play again in ${m}:${s}`;
+}
+
+/* ============ INITIAL LOAD LEADERBOARD ============ */
+loadLeaderboard();
+</script>
+
+</body>
+</html>
