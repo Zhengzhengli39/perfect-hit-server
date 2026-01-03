@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Perfect Hit – World Mode</title>
+<style>
+body {
+  background:#0b0b0b;
+  color:#fff;
+  font-family:Arial, sans-serif;
+  text-align:center;
+}
+#track {
+  width:80%;
+  height:22px;
+  background:#333;
+  margin:30px auto;
+  position:relative;
+}
+#zone {
+  position:absolute;
+  left:45%;
+  width:10%;
+  height:100%;
+  background:#00ffcc;
+}
+#bar {
+  position:absolute;
+  width:28px;
+  height:100%;
+  background:#ffcc00;
+}
+button {
+  padding:10px 20px;
+  font-size:16px;
+}
+#score,#time,#result {
+  margin-top:10px;
+  font-size:18px;
+}
+#leaderboard {
+  margin-top:30px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Perfect Hit 🌍</h1>
+
+<div id="track">
+  <div id="zone"></div>
+  <div id="bar"></div>
+</div>
+
+<button id="hitBtn">HIT</button>
+
+<div id="score">Score: 0</div>
+<div id="time">Time: 60</div>
+<div id="result"></div>
+
+<div id="leaderboard">
+  <h3>World Top 10</h3>
+  <ol id="list"></ol>
+</div>
+
+<script>
+/* ================= CONFIG ================= */
+const GAME_TIME = 60;
+const SERVER = "https://perfect-hit-server.onrender.com";
+
+/* ================= STATE ================= */
+let pos = 0, dir = 1, speed = 7;
+let score = 0;
+let timeLeft = GAME_TIME;
+let playing = true;
+
+/* ================= ELEMENTS ================= */
+const bar = document.getElementById("bar");
+const hitBtn = document.getElementById("hitBtn");
+const scoreText = document.getElementById("score");
+const timeText = document.getElementById("time");
+const resultText = document.getElementById("result");
+const list = document.getElementById("list");
+
+/* ================= GAME LOOP ================= */
+const move = setInterval(() => {
+  if (!playing) return;
+  pos += speed * dir;
+  if (pos > 100 || pos < 0) dir *= -1;
+  bar.style.left = pos + "%";
+}, 30);
+
+const timer = setInterval(() => {
+  timeLeft--;
+  timeText.textContent = `Time: ${timeLeft}`;
+  if (timeLeft <= 0) endGame();
+}, 1000);
+
+/* ================= HIT ================= */
+hitBtn.onclick = () => {
+  if (!playing) return;
+
+  if (pos >= 45 && pos <= 55) {
+    score += 100;
+    flash("PERFECT", "#00ffcc");
+  } else if (pos >= 40 && pos <= 60) {
+    score += 50;
+    flash("GOOD", "#ffaa00");
+  } else {
+    score -= 20;
+    flash("MISS", "#ff4444");
+  }
+
+  scoreText.textContent = `Score: ${score}`;
+};
+
+function flash(text, color) {
+  resultText.textContent = text;
+  resultText.style.color = color;
+  setTimeout(() => resultText.textContent = "", 300);
+}
+
+/* ================= END GAME ================= */
+function endGame() {
+  playing = false;
+  hitBtn.disabled = true;
+  clearInterval(move);
+  clearInterval(timer);
+
+  resultText.textContent = "Submitting score...";
+  submitScore();
+}
+
+/* ================= NETWORK ================= */
+async function submitScore() {
+  await fetch(`${SERVER}/submit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ score })
+  });
+
+  loadLeaderboard();
+}
+
+async function loadLeaderboard() {
+  const res = await fetch(`${SERVER}/leaderboard`);
+  const data = await res.json();
+
+  list.innerHTML = "";
+  data.forEach(item => {
+    const li = document.createElement("li");
+    li.textContent = item.score;
+    list.appendChild(li);
+  });
+
+  resultText.textContent = "Session complete. Come back later.";
+}
+
+loadLeaderboard();
+</script>
+
+</body>
+</html>
